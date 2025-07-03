@@ -184,8 +184,8 @@ def get_customs_stats():
         if not current_user or not current_user.is_admin:
             return jsonify({'error': 'Permisos insuficientes'}), 403
         
-        # Estadísticas de usuarios
-        total_users = User.query.count()
+        # Estadísticas de usuarios (sin contar admins)
+        total_users = User.query.filter_by(is_admin=False).count()
         
         # Estadísticas de documentos
         total_documents = Document.query.count()

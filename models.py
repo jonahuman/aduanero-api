@@ -80,8 +80,12 @@ class CustomsRecord(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def to_dict(self):
-        user_data = self.user.to_dict() if self.user else None
-        documents_data = [doc.to_dict() for doc in self.user.documents] if self.user else []
+        try:
+            user_data = self.user.to_dict() if self.user else None
+            documents_data = [doc.to_dict() for doc in self.user.documents] if self.user and self.user.documents else []
+        except:
+            user_data = None
+            documents_data = []
         
         return {
             'id': self.id,

@@ -114,6 +114,25 @@ def delete_admin_endpoint():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/setup/reset-database', methods=['DELETE'])
+def reset_database():
+    """Limpiar toda la base de datos para empezar desde cero"""
+    try:
+        # Eliminar todos los registros en orden correcto (por las foreign keys)
+        CustomsRecord.query.delete()
+        Document.query.delete()
+        User.query.delete()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Base de datos limpiada exitosamente',
+            'status': 'ready_for_fresh_start'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Endpoint no encontrado'}), 404

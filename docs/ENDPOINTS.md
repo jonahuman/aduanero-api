@@ -462,6 +462,22 @@ Eliminar usuario administrador (limpieza de base de datos)
 }
 ```
 
+### DELETE /setup/reset-database
+Limpiar toda la base de datos (empezar desde cero)
+
+**Body (raw JSON):**
+```json
+{}
+```
+
+**Response 200:**
+```json
+{
+  "message": "Base de datos limpiada exitosamente",
+  "status": "ready_for_fresh_start"
+}
+```
+
 ## 🔒 Autenticación
 
 Todos los endpoints (excepto `/auth/login` y `/health`) requieren el header:

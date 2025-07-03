@@ -1,7 +1,10 @@
--- Base de datos para Sistema Aduanero
--- MySQL Workbench 8.0
+-- =============================================
+-- Base de datos Sistema Aduanero - LIMPIA
+-- =============================================
+-- Ejecutar este script para empezar desde cero
 
-CREATE DATABASE IF NOT EXISTS aduanero_bbdd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP DATABASE IF EXISTS aduanero_bbdd;
+CREATE DATABASE aduanero_bbdd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE aduanero_bbdd;
 
 -- Tabla de usuarios
@@ -59,30 +62,14 @@ CREATE TABLE customs_records (
     INDEX idx_processed_at (processed_at)
 );
 
--- Insertar usuario administrador por defecto
-INSERT INTO users (
-    id, 
-    email, 
-    password_hash, 
-    first_name, 
-    last_name, 
-    nationality, 
-    date_of_birth, 
-    phone_number, 
-    address, 
-    is_admin
-) VALUES (
-    UUID(),
-    'admin@aduana.gov',
-    'pbkdf2:sha256:260000$salt$hash',
-    'Administrador',
-    'Sistema',
-    'Nacional',
-    '1990-01-01',
-    '+1234567890',
-    'Oficina Central de Aduanas',
-    TRUE
-);
+-- =============================================
+-- DATOS INICIALES - BASE DE DATOS LIMPIA
+-- =============================================
+-- No insertar datos iniciales - empezar desde cero
+-- Los usuarios se crean desde el frontend
+
+-- Para crear admin usar: POST /api/setup/admin
+-- Para limpiar todo usar: DELETE /api/setup/reset-database
 
 -- Vistas útiles para reportes
 CREATE VIEW user_summary AS
