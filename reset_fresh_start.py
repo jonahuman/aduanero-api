@@ -72,7 +72,7 @@ def check_stats():
         if stats_response.status_code == 200:
             stats = stats_response.json()
             print("Estadisticas iniciales:")
-            print(f"   Usuarios: {stats['users']['total']}")
+            print(f"   Pasajeros: {stats['users']['total']}")
             print(f"   Documentos: {stats['documents']['total']}")
             print(f"   Registros aduaneros: {stats['customs_records']['total']}")
             return True
