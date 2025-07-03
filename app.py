@@ -1,7 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 import os
@@ -79,6 +79,49 @@ def create_admin_endpoint():
 def health_check():
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
 
+# Endpoint para servir archivos subidos
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """Servir archivos subidos"""
+    try:
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    except FileNotFoundError:
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+
+@app.route('/api/activity/summary', methods=['GET'])
+@jwt_required()
+def get_activity_summary():
+    """Obtener resumen de actividad del día"""
+    try:
+        from datetime import date
+        today = date.today()
+        
+        # Actividad del día
+        users_today = User.query.filter(
+            User.created_at >= today,
+            User.is_admin == False
+        ).count()
+        
+        docs_today = Document.query.filter(
+            Document.uploaded_at >= today
+        ).count()
+        
+        records_today = CustomsRecord.query.filter(
+            CustomsRecord.processed_at >= today
+        ).count()
+        
+        return jsonify({
+            'today': {
+                'users': users_today,
+                'documents': docs_today,
+                'records': records_today
+            },
+            'date': today.isoformat()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/setup/check', methods=['GET'])
 def setup_check():
     try:
@@ -131,6 +174,86 @@ def reset_database():
         }), 200
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/activity/recent', methods=['GET'])
+@jwt_required()
+def get_recent_activity():
+    """Obtener actividad reciente del sistema"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        activities = []
+        
+        # Documentos recientes (aprobados, rechazados, pendientes)
+        recent_docs = Document.query.order_by(Document.uploaded_at.desc()).limit(limit).all()
+        for doc in recent_docs:
+            user_name = f"{doc.user.first_name} {doc.user.last_name}" if doc.user else "Usuario desconocido"
+            
+            if doc.status == 'approved':
+                action = 'Documento aprobado'
+                activity_type = 'success'
+            elif doc.status == 'rejected':
+                action = 'Documento rechazado'
+                activity_type = 'error'
+            else:
+                action = 'Documento subido'
+                activity_type = 'info'
+            
+            activities.append({
+                'id': doc.id,
+                'action': action,
+                'user': user_name,
+                'time': doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                'type': activity_type,
+                'details': f"Tipo: {doc.type}, Número: {doc.document_number}"
+            })
+        
+        # Usuarios recientes
+        recent_users = User.query.filter_by(is_admin=False).order_by(User.created_at.desc()).limit(limit).all()
+        for user in recent_users:
+            activities.append({
+                'id': user.id,
+                'action': 'Nuevo usuario registrado',
+                'user': f"{user.first_name} {user.last_name}",
+                'time': user.created_at.isoformat() if user.created_at else None,
+                'type': 'info',
+                'details': f"Nacionalidad: {user.nationality}"
+            })
+        
+        # Registros aduaneros recientes
+        recent_records = CustomsRecord.query.order_by(CustomsRecord.processed_at.desc()).limit(limit).all()
+        for record in recent_records:
+            user_name = f"{record.user.first_name} {record.user.last_name}" if record.user else "Usuario desconocido"
+            
+            if record.status == 'activo':
+                action = 'Registro aduanero activado'
+                activity_type = 'success'
+            elif record.status == 'inactivo':
+                action = 'Registro aduanero desactivado'
+                activity_type = 'error'
+            else:
+                action = 'Registro aduanero creado'
+                activity_type = 'info'
+            
+            activities.append({
+                'id': record.id,
+                'action': action,
+                'user': user_name,
+                'time': record.processed_at.isoformat() if record.processed_at else None,
+                'type': activity_type,
+                'details': f"Estado: {record.status}"
+            })
+        
+        # Ordenar por tiempo (más recientes primero) y limitar
+        activities.sort(key=lambda x: x['time'] or '', reverse=True)
+        activities = activities[:limit]
+        
+        return jsonify({
+            'activities': activities,
+            'total': len(activities)
+        }), 200
+        
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(404)

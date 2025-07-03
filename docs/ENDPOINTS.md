@@ -478,6 +478,59 @@ Limpiar toda la base de datos (empezar desde cero)
 }
 ```
 
+### GET /activity/recent
+Obtener actividad reciente del sistema (requiere autenticación)
+
+**Query params:** `?limit=10`
+
+**Response 200:**
+```json
+{
+  "activities": [
+    {
+      "id": "uuid",
+      "action": "Documento aprobado",
+      "user": "Juan Pérez",
+      "time": "2024-01-15T10:30:00Z",
+      "type": "success",
+      "details": "Tipo: passport, Número: AB123456"
+    },
+    {
+      "id": "uuid",
+      "action": "Nuevo usuario registrado",
+      "user": "María González",
+      "time": "2024-01-15T09:15:00Z",
+      "type": "info",
+      "details": "Nacionalidad: Mexicana"
+    },
+    {
+      "id": "uuid",
+      "action": "Documento rechazado",
+      "user": "Carlos Martínez",
+      "time": "2024-01-15T08:45:00Z",
+      "type": "error",
+      "details": "Tipo: id_card, Número: 12345678"
+    }
+  ],
+  "total": 3
+}
+```
+
+### GET /activity/summary
+Obtener resumen de actividad del día (requiere autenticación)
+
+**Response 200:**
+```json
+{
+  "today": {
+    "users": 5,
+    "documents": 12,
+    "records": 8
+  },
+  "date": "2024-01-15"
+}
+```
+
 ## 🔒 Autenticación
 
 Todos los endpoints (excepto `/auth/login` y `/health`) requieren el header:

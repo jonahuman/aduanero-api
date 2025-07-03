@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
+from sqlalchemy.orm import joinedload
 from models import CustomsRecord, User, Document, db
 
 customs_bp = Blueprint('customs', __name__)
@@ -63,7 +64,10 @@ def get_customs_records():
         status_filter = request.args.get('status')
         search = request.args.get('search', '')
         
-        query = CustomsRecord.query.join(User)
+        # Usar eager loading para evitar problemas de lazy loading
+        query = CustomsRecord.query.options(
+            db.joinedload(CustomsRecord.user).joinedload(User.documents)
+        )
         
         # Aplicar filtro de estado
         if status_filter and status_filter != 'todos':
@@ -73,7 +77,7 @@ def get_customs_records():
         # Aplicar filtro de búsqueda
         if search:
             search_filter = f"%{search}%"
-            query = query.filter(
+            query = query.join(User).filter(
                 db.or_(
                     User.first_name.ilike(search_filter),
                     User.last_name.ilike(search_filter),
@@ -91,14 +95,37 @@ def get_customs_records():
             error_out=False
         )
         
+        # Convertir a dict de forma segura
+        records_data = []
+        for record in records.items:
+            try:
+                records_data.append(record.to_dict())
+            except Exception as e:
+                # Si falla to_dict(), crear un dict básico
+                records_data.append({
+                    'id': record.id,
+                    'userId': record.user_id,
+                    'user': {
+                        'firstName': record.user.first_name if record.user else 'Desconocido',
+                        'lastName': record.user.last_name if record.user else '',
+                        'email': record.user.email if record.user else '',
+                        'nationality': record.user.nationality if record.user else ''
+                    } if record.user else None,
+                    'documents': [],
+                    'status': record.status,
+                    'processedAt': record.processed_at.isoformat() if record.processed_at else None,
+                    'notes': record.notes
+                })
+        
         return jsonify({
-            'records': [record.to_dict() for record in records.items],
+            'records': records_data,
             'total': records.total,
             'pages': records.pages,
             'current_page': page
         }), 200
         
     except Exception as e:
+        print(f"Error en get_customs_records: {e}")  # Para debug
         return jsonify({'error': 'Error al obtener registros aduaneros'}), 500
 
 @customs_bp.route('/records/<record_id>', methods=['GET'])

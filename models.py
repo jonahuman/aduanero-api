@@ -81,9 +81,30 @@ class CustomsRecord(db.Model):
     
     def to_dict(self):
         try:
-            user_data = self.user.to_dict() if self.user else None
-            documents_data = [doc.to_dict() for doc in self.user.documents] if self.user and self.user.documents else []
-        except:
+            # Obtener datos del usuario de forma segura
+            if self.user:
+                user_data = {
+                    'id': self.user.id,
+                    'firstName': self.user.first_name,
+                    'lastName': self.user.last_name,
+                    'email': self.user.email,
+                    'nationality': self.user.nationality,
+                    'phoneNumber': self.user.phone_number,
+                    'address': self.user.address
+                }
+                
+                # Obtener documentos de forma segura
+                documents_data = []
+                try:
+                    if hasattr(self.user, 'documents') and self.user.documents:
+                        documents_data = [doc.to_dict() for doc in self.user.documents]
+                except:
+                    documents_data = []
+            else:
+                user_data = None
+                documents_data = []
+                
+        except Exception as e:
             user_data = None
             documents_data = []
         
