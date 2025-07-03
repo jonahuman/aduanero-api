@@ -105,3 +105,5 @@ BEGIN
         (SELECT COUNT(*) FROM customs_records WHERE status = 'pendiente') as pending_records;
 END //
 DELIMITER ;
+
+SELECT * FROM users;

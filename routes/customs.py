@@ -178,6 +178,46 @@ def update_customs_record(record_id):
         db.session.rollback()
         return jsonify({'error': 'Error al actualizar registro'}), 500
 
+@customs_bp.route('/records/<record_id>/toggle-status', methods=['PUT'])
+@jwt_required()
+def toggle_record_status(record_id):
+    """Cambiar estado entre activo/inactivo"""
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user or not current_user.is_admin:
+            return jsonify({'error': 'Permisos insuficientes'}), 403
+        
+        record = CustomsRecord.query.get(record_id)
+        if not record:
+            return jsonify({'error': 'Registro no encontrado'}), 404
+        
+        # Cambiar estado
+        if record.status == 'activo':
+            record.status = 'inactivo'
+            message = 'Registro desactivado'
+        elif record.status == 'inactivo':
+            record.status = 'activo'
+            message = 'Registro activado'
+        else:  # pendiente
+            record.status = 'activo'
+            message = 'Registro activado'
+        
+        record.updated_at = datetime.utcnow()
+        record.processed_by = current_user_id
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': message,
+            'record': record.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al cambiar estado'}), 500
+
 @customs_bp.route('/records/<record_id>', methods=['DELETE'])
 @jwt_required()
 def delete_customs_record(record_id):
@@ -258,44 +298,44 @@ def process_user_registration():
         current_user_id = get_jwt_identity()
         data = request.get_json()
         
-        # Crear usuario
+        # Obtener datos
         user_data = data.get('userData')
-        documents_data = data.get('documents', [])
         
         if not user_data:
             return jsonify({'error': 'Datos de usuario requeridos'}), 400
         
-        # Crear usuario
-        user = User(
-            email=user_data.get('email', f"user_{datetime.utcnow().timestamp()}@temp.com"),
-            password_hash='temp_hash',  # Se debe cambiar en implementación real
-            first_name=user_data['firstName'],
-            last_name=user_data['lastName'],
-            nationality=user_data['nationality'],
-            date_of_birth=datetime.fromisoformat(user_data['dateOfBirth'].replace('Z', '+00:00')).date(),
-            phone_number=user_data['phoneNumber'],
-            address=user_data['address']
-        )
+        # Buscar si el usuario ya existe (por el ID que viene del frontend)
+        user_id = user_data.get('userId')
+        if user_id:
+            user = User.query.get(user_id)
+            if user:
+                # Verificar si ya tiene registro aduanero
+                existing_record = CustomsRecord.query.filter_by(user_id=user.id).first()
+                if not existing_record:
+                    # Crear registro aduanero
+                    customs_record = CustomsRecord(
+                        user_id=user.id,
+                        status='pendiente',
+                        notes='Registro creado tras completar el flujo de documentos',
+                        processed_by=current_user_id
+                    )
+                    
+                    db.session.add(customs_record)
+                    db.session.commit()
+                    
+                    return jsonify({
+                        'message': 'Usuario procesado exitosamente',
+                        'user': user.to_dict(),
+                        'customs_record': customs_record.to_dict()
+                    }), 201
+                else:
+                    return jsonify({
+                        'message': 'Usuario ya tiene registro aduanero',
+                        'user': user.to_dict(),
+                        'customs_record': existing_record.to_dict()
+                    }), 200
         
-        db.session.add(user)
-        db.session.flush()  # Para obtener el ID del usuario
-        
-        # Crear registro aduanero automáticamente
-        customs_record = CustomsRecord(
-            user_id=user.id,
-            status='pendiente',
-            notes='Registro creado automáticamente tras completar datos personales y documentos',
-            processed_by=current_user_id
-        )
-        
-        db.session.add(customs_record)
-        db.session.commit()
-        
-        return jsonify({
-            'message': 'Usuario procesado exitosamente',
-            'user': user.to_dict(),
-            'customs_record': customs_record.to_dict()
-        }), 201
+        return jsonify({'error': 'Usuario no encontrado'}), 404
         
     except Exception as e:
         db.session.rollback()

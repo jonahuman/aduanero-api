@@ -310,6 +310,22 @@ Actualizar registro (solo admin)
 }
 ```
 
+### PUT /customs/records/{id}/toggle-status
+Cambiar estado entre activo/inactivo (solo admin)
+
+**Body (raw JSON):**
+```json
+{}
+```
+
+**Response 200:**
+```json
+{
+  "message": "Registro activado",
+  "record": {...}
+}
+```
+
 ### DELETE /customs/records/{id}
 Eliminar registro (solo admin)
 ```json
