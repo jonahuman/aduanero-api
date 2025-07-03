@@ -1,0 +1,275 @@
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import datetime
+from models import CustomsRecord, User, Document, db
+
+customs_bp = Blueprint('customs', __name__)
+
+@customs_bp.route('/records', methods=['POST'])
+@jwt_required()
+def create_customs_record():
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user or not current_user.is_admin:
+            return jsonify({'error': 'Permisos insuficientes'}), 403
+        
+        data = request.get_json()
+        user_id = data.get('userId')
+        status = data.get('status', 'pendiente')
+        notes = data.get('notes', '')
+        
+        if not user_id:
+            return jsonify({'error': 'ID de usuario es requerido'}), 400
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Usuario no encontrado'}), 404
+        
+        if status not in ['activo', 'inactivo', 'pendiente']:
+            return jsonify({'error': 'Estado inválido'}), 400
+        
+        # Verificar si ya existe un registro para este usuario
+        existing_record = CustomsRecord.query.filter_by(user_id=user_id).first()
+        if existing_record:
+            return jsonify({'error': 'Ya existe un registro aduanero para este usuario'}), 400
+        
+        record = CustomsRecord(
+            user_id=user_id,
+            status=status,
+            notes=notes,
+            processed_by=current_user_id
+        )
+        
+        db.session.add(record)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Registro aduanero creado exitosamente',
+            'record': record.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al crear registro aduanero'}), 500
+
+@customs_bp.route('/records', methods=['GET'])
+@jwt_required()
+def get_customs_records():
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        status_filter = request.args.get('status')
+        search = request.args.get('search', '')
+        
+        query = CustomsRecord.query.join(User)
+        
+        # Aplicar filtro de estado
+        if status_filter and status_filter != 'todos':
+            if status_filter in ['activo', 'inactivo', 'pendiente']:
+                query = query.filter(CustomsRecord.status == status_filter)
+        
+        # Aplicar filtro de búsqueda
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    User.first_name.ilike(search_filter),
+                    User.last_name.ilike(search_filter),
+                    User.email.ilike(search_filter),
+                    User.nationality.ilike(search_filter)
+                )
+            )
+        
+        # Ordenar por fecha de procesamiento (más recientes primero)
+        query = query.order_by(CustomsRecord.processed_at.desc())
+        
+        records = query.paginate(
+            page=page,
+            per_page=per_page,
+            error_out=False
+        )
+        
+        return jsonify({
+            'records': [record.to_dict() for record in records.items],
+            'total': records.total,
+            'pages': records.pages,
+            'current_page': page
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': 'Error al obtener registros aduaneros'}), 500
+
+@customs_bp.route('/records/<record_id>', methods=['GET'])
+@jwt_required()
+def get_customs_record(record_id):
+    try:
+        record = CustomsRecord.query.get(record_id)
+        
+        if not record:
+            return jsonify({'error': 'Registro no encontrado'}), 404
+        
+        return jsonify({'record': record.to_dict()}), 200
+        
+    except Exception as e:
+        return jsonify({'error': 'Error al obtener registro'}), 500
+
+@customs_bp.route('/records/<record_id>', methods=['PUT'])
+@jwt_required()
+def update_customs_record(record_id):
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user or not current_user.is_admin:
+            return jsonify({'error': 'Permisos insuficientes'}), 403
+        
+        record = CustomsRecord.query.get(record_id)
+        if not record:
+            return jsonify({'error': 'Registro no encontrado'}), 404
+        
+        data = request.get_json()
+        
+        if data.get('status') and data['status'] in ['activo', 'inactivo', 'pendiente']:
+            record.status = data['status']
+        
+        if data.get('notes') is not None:
+            record.notes = data['notes']
+        
+        record.updated_at = datetime.utcnow()
+        record.processed_by = current_user_id
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Registro actualizado exitosamente',
+            'record': record.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al actualizar registro'}), 500
+
+@customs_bp.route('/records/<record_id>', methods=['DELETE'])
+@jwt_required()
+def delete_customs_record(record_id):
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user or not current_user.is_admin:
+            return jsonify({'error': 'Permisos insuficientes'}), 403
+        
+        record = CustomsRecord.query.get(record_id)
+        if not record:
+            return jsonify({'error': 'Registro no encontrado'}), 404
+        
+        db.session.delete(record)
+        db.session.commit()
+        
+        return jsonify({'message': 'Registro eliminado exitosamente'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al eliminar registro'}), 500
+
+@customs_bp.route('/stats', methods=['GET'])
+@jwt_required()
+def get_customs_stats():
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user or not current_user.is_admin:
+            return jsonify({'error': 'Permisos insuficientes'}), 403
+        
+        # Estadísticas de usuarios
+        total_users = User.query.count()
+        
+        # Estadísticas de documentos
+        total_documents = Document.query.count()
+        approved_documents = Document.query.filter_by(status='approved').count()
+        pending_documents = Document.query.filter_by(status='pending').count()
+        rejected_documents = Document.query.filter_by(status='rejected').count()
+        
+        # Estadísticas de registros aduaneros
+        total_records = CustomsRecord.query.count()
+        active_records = CustomsRecord.query.filter_by(status='activo').count()
+        inactive_records = CustomsRecord.query.filter_by(status='inactivo').count()
+        pending_records = CustomsRecord.query.filter_by(status='pendiente').count()
+        
+        return jsonify({
+            'users': {
+                'total': total_users
+            },
+            'documents': {
+                'total': total_documents,
+                'approved': approved_documents,
+                'pending': pending_documents,
+                'rejected': rejected_documents
+            },
+            'customs_records': {
+                'total': total_records,
+                'active': active_records,
+                'inactive': inactive_records,
+                'pending': pending_records
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': 'Error al obtener estadísticas'}), 500
+
+@customs_bp.route('/process-user', methods=['POST'])
+@jwt_required()
+def process_user_registration():
+    """
+    Procesa el registro completo de un usuario (datos personales + documentos)
+    y crea automáticamente el registro aduanero
+    """
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        # Crear usuario
+        user_data = data.get('userData')
+        documents_data = data.get('documents', [])
+        
+        if not user_data:
+            return jsonify({'error': 'Datos de usuario requeridos'}), 400
+        
+        # Crear usuario
+        user = User(
+            email=user_data.get('email', f"user_{datetime.utcnow().timestamp()}@temp.com"),
+            password_hash='temp_hash',  # Se debe cambiar en implementación real
+            first_name=user_data['firstName'],
+            last_name=user_data['lastName'],
+            nationality=user_data['nationality'],
+            date_of_birth=datetime.fromisoformat(user_data['dateOfBirth'].replace('Z', '+00:00')).date(),
+            phone_number=user_data['phoneNumber'],
+            address=user_data['address']
+        )
+        
+        db.session.add(user)
+        db.session.flush()  # Para obtener el ID del usuario
+        
+        # Crear registro aduanero automáticamente
+        customs_record = CustomsRecord(
+            user_id=user.id,
+            status='pendiente',
+            notes='Registro creado automáticamente tras completar datos personales y documentos',
+            processed_by=current_user_id
+        )
+        
+        db.session.add(customs_record)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Usuario procesado exitosamente',
+            'user': user.to_dict(),
+            'customs_record': customs_record.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al procesar usuario'}), 500
